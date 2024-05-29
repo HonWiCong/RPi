@@ -123,9 +123,12 @@ if subscribe_future.done():
 if __name__ == "__main__":
     while True:
         if not data_received:
-            # localData = localDatabase.query("SELECT * from variables", False)
-            # if localData is not None:
-            #     data_received = True
+            localData = localDatabase.query("SELECT * from variables", False)
+            if localData is not None:
+                data_received = True
+                for row in localData:
+                    controller.set(row["name"], row["value"])
+                print(controller.toJson())
             print("Waiting for data...")
             time.sleep(1)
             continue
