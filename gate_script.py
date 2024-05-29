@@ -1,10 +1,11 @@
 import time
 import json
-from SerialInterface import SerialInterface
-from Controller import Controller
-from AWSIoTPythonSDK.MQTTLib import AWSIoTMQTTClient
+from awscrt import io, mqtt, auth, http
+from awsiot import mqtt_connection_builder
 
 from Database import Database
+from SerialInterface import SerialInterface
+from Controller import Controller
 
 localDatabase = Database.get_instance()
 controller = Controller()
@@ -16,10 +17,10 @@ post_response_data = {
     "message": None
 }
 
-def retrieveData(client, userdata, message):
+def retrieveData(topic, payload, dup, qos, retain, **kwargs):
     print("New message received")
     global controller, localDatabase, data_received
-    payload = message.payload.decode('utf-8')
+    payload = payload.decode('utf-8')
     data = json.loads(payload)
     print(data)
 
@@ -41,53 +42,81 @@ def retrieveData(client, userdata, message):
     if "private_max_car_number" in data:
         controller.private_max_car_number = data["private_max_car_number"]
 
+    # Update all the variables in the database that matches the name
+    for key in data:
+        localDatabase.query(f"UPDATE variables SET value = {data[key]} WHERE name = '{key}'", False)x
+    
     data_received = True
-    # combine 2 object class into 1 object
     print(controller.toJson())
     iface.write_msg(controller.toJson())
-    # response = iface.read_msg()
-    # i = 5
-    # while response is None or response.startswith("Error") or response.startswith("InvalidInput") and i > 0:
-    #     print(f"Response: {response}")
-    #     iface.write_msg(controller.toJson())
-    #     response = iface.read_msg()
-    #     i -= 1
+    # Repeat 5 times if the response is invalid
+    response = iface.read_msg()
+    i = 5
+    while response is None or response.startswith("Error") or response.startswith("InvalidInput") and i > 0:
+        print(f"Response: {response}")
+        iface.write_msg(controller.toJson())
+        response = iface.read_msg()
+        i -= 1
 
-def handleResponseData(client, userdata, message):
+def handleResponseData(topic, payload, dup, qos, retain, **kwargs):
     print("Response received")
-    payload = message.payload.decode('utf-8')
+    payload = payload.decode('utf-8')
     data = json.loads(payload)
 
     if "status" in data and "message" in data:
         post_response_data["status"] = data["status"]
         post_response_data["message"] = data["message"]
 
-myMQTTClient = AWSIoTMQTTClient("rpi_public")
-myMQTTClient.configureEndpoint(
-    "a27eliy2xg4c5e-ats.iot.us-east-1.amazonaws.com", 8883)
-# myMQTTClient.configureCredentials(
-#     r"D:\Users\User\Programming\Swinburne Project\IOT\mqtt\AmazonRootCA1.pem",
-#     r"D:\Users\User\Programming\Swinburne Project\IOT\mqtt\44bdbb017ed61e3180473d7562a7219625694010abfe0315ab96632a7fe8402b-private.pem.key",
-#     r"D:\Users\User\Programming\Swinburne Project\IOT\mqtt\44bdbb017ed61e3180473d7562a7219625694010abfe0315ab96632a7fe8402b-certificate.pem.crt"
-# )
-myMQTTClient.configureCredentials(
-    r"/home/pi/RPi/mqtt/AmazonRootCA1.pem",
-    r"/home/pi/RPi/mqtt/44bdbb017ed61e3180473d7562a7219625694010abfe0315ab96632a7fe8402b-private.pem.key",
-    r"/home/pi/RPi/mqtt/44bdbb017ed61e3180473d7562a7219625694010abfe0315ab96632a7fe8402b-certificate.pem.crt"
+endpoint = "a27eliy2xg4c5e-ats.iot.us-east-1.amazonaws.com"
+cert_filepath = r"D:\Users\User\Programming\Swinburne Project\IOT\Hardware Program\mqtt\44bdbb017ed61e3180473d7562a7219625694010abfe0315ab96632a7fe8402b-certificate.pem.crt"
+pri_key_filepath = r"D:\Users\User\Programming\Swinburne Project\IOT\Hardware Program\mqtt\44bdbb017ed61e3180473d7562a7219625694010abfe0315ab96632a7fe8402b-private.pem.key"
+ca_filepath = r"D:\Users\User\Programming\Swinburne Project\IOT\Hardware Program\mqtt\AmazonRootCA1.pem"
+client_id = "rpi_public"
+
+# RPi
+# cert_filepath = r"/home/pi/RPi/mqtt/44bdbb017ed61e3180473d7562a7219625694010abfe0315ab96632a7fe8402b-certificate.pem.crt"
+# pri_key_filepath = r"/home/pi/RPi/mqtt/44bdbb017ed61e3180473d7562a7219625694010abfe0315ab96632a7fe8402b-private.pem.key"
+# ca_filepath = r"/home/pi/RPi/mqtt/AmazonRootCA1.pem"
+
+event_loop_group = io.EventLoopGroup(1)
+host_resolver = io.DefaultHostResolver(event_loop_group)
+client_bootstrap = io.ClientBootstrap(event_loop_group, host_resolver)
+
+io.init_logging(getattr(io.LogLevel.NoLogs, 'NoLogs'), 'stderr')
+
+mqtt_connection = mqtt_connection_builder.mtls_from_path(
+    endpoint=endpoint,
+    cert_filepath=cert_filepath,
+    pri_key_filepath=pri_key_filepath,
+    client_bootstrap=client_bootstrap,
+    ca_filepath=ca_filepath,
+    client_id=client_id,
+    clean_session=False,
+    keep_alive_secs=6
 )
-myMQTTClient.configureOfflinePublishQueueing(-1)
-myMQTTClient.configureDrainingFrequency(2)
-myMQTTClient.configureConnectDisconnectTimeout(10)
-myMQTTClient.configureMQTTOperationTimeout(5)
 
 request = {
     "request": "control_data"
 }
 
-myMQTTClient.connect()
-myMQTTClient.publish("rpi/get_request", json.dumps(request), 1)
-myMQTTClient.subscribe("rpi/get_response", 1, retrieveData)
-myMQTTClient.subscribe("rpi/post_response", 1, handleResponseData)
+print("Connecting to {} with client ID '{}'...".format(endpoint, client_id))
+connected_future = mqtt_connection.connect()
+connected_future.result()
+if connected_future.done():
+    print("Connected!")
+else:
+    print("Connection failed")
+
+mqtt_connection.publish(topic="rpi/get_response", payload=json.dumps(request), qos=mqtt.QoS.AT_LEAST_ONCE)
+subscribe_future, packet_id = mqtt_connection.subscribe(topic="rpi/get_response", qos=mqtt.QoS.AT_LEAST_ONCE, callback=retrieveData)
+subscribe_result = subscribe_future.result()
+if subscribe_future.done():
+    print("Subscribed to rpi/get_response")
+
+subscribe_future, packet_id = mqtt_connection.subscribe(topic="rpi/post_response", qos=mqtt.QoS.AT_LEAST_ONCE, callback=handleResponseData)
+subscribe_result = subscribe_future.result()
+if subscribe_future.done():
+    print("Subscribed to rpi/post_response")
 
 if __name__ == "__main__":
     while True:
@@ -108,7 +137,8 @@ if __name__ == "__main__":
         time.sleep(0.1)
 
         if "type" in response and "status" in response and "rfidTag" in response and "distance" in response and "slotID" in response:
-            myMQTTClient.publish("rpi/post_request", f'{response}', 1)
+            publish_future, packet_id = mqtt_connection.publish("rpi/post_request", json.dumps(response), mqtt.QoS.AT_LEAST_ONCE)
+            publish_result = publish_future.result()
             while post_response_data["status"] is None and post_response_data["message"] is None:
                 print("Waiting for response...")
                 time.sleep(1)
