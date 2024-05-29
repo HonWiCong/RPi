@@ -122,6 +122,16 @@ def saveData(topic, payload, dup, qos, retain, **kwargs):
 
         return
 
+def saveCarplateData(topic, payload, dup, qos, retain, **kwargs):
+    payload = payload.decode('utf-8')
+    data = json.loads(payload)
+
+    if "sql" in data:
+        cursor = database.cursor()
+        cursor.execute(data["sql"])
+        database.commit()
+        return
+
 print("Subscribing to topic 'rpi/get_request'...")
 subscribe_future, packet_id = mqtt_connection.subscribe(
     topic="rpi/get_request",
@@ -137,6 +147,16 @@ subscribe_future, packet_id = mqtt_connection.subscribe(
     topic="rpi/post_request",
     qos=mqtt.QoS.AT_LEAST_ONCE,
     callback=saveData)
+
+# Wait for the subscribe to succeed
+subscribe_result = subscribe_future.result()
+print("Subscribed with {}".format(str(subscribe_result['qos'])))
+
+print("Subscribing to topic 'rpi/carplate_post_request'...")
+subscribe_future, packet_id = mqtt_connection.subscribe(
+    topic="rpi/carplate_post_request",
+    qos=mqtt.QoS.AT_LEAST_ONCE,
+    callback=sendCarplateData)
 
 # Wait for the subscribe to succeed
 subscribe_result = subscribe_future.result()
