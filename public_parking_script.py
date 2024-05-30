@@ -19,6 +19,7 @@ post_response_data = {
 }
 
 current_parking_status = {}
+last_processed_response = None  # Variable to store the last processed response
 
 endpoint = "a27eliy2xg4c5e-ats.iot.us-east-1.amazonaws.com"
 cert_filepath = "/home/pi/RPi-clone/mqtt/44bdbb017ed61e3180473d7562a7219625694010abfe0315ab96632a7fe8402b-certificate.pem.crt"
@@ -204,26 +205,27 @@ if __name__ == "__main__":
         while True:
             response = iface.read_msg()
             if response:
-                print(f"Response: {response}")
-                try:
-                    data = json.loads(response)
-                    slot_id = data["slotID"]
-                    status = data["status"]
+                if response != last_processed_response:  # Check if the response is the same as the last processed one
+                    print(f"Response: {response}")
+                    try:
+                        data = json.loads(response)
+                        slot_id = data["slotID"]
+                        status = data["status"]
 
-                    handle_parking_event(slot_id, status)
-                    update_public_carpark_slot(slot_id, status)
+                        handle_parking_event(slot_id, status)
+                        update_public_carpark_slot(slot_id, status)
 
-                    publish_to_cloud(data)
+                        publish_to_cloud(data)
 
-                    # Example: Send an MQTT message if the status changes
-                    if status == 1:
-                        publish_to_cloud({"slot_id": slot_id, "status": "occupied"})
-                    elif status == 0:
-                        publish_to_cloud({"slot_id": slot_id, "status": "empty"})
+                        # Example: Send an MQTT message if the status changes
+                        if status == 1:
+                            publish_to_cloud({"slot_id": slot_id, "status": "occupied"})
+                        elif status == 0:
+                            publish_to_cloud({"slot_id": slot_id, "status": "empty"})
 
-                except json.JSONDecodeError:
-                    print(f"Received non-JSON response: {response}")
-
+                        last_processed_response = response  # Update the last processed response
+                    except json.JSONDecodeError:
+                        print(f"Received non-JSON response: {response}")
             time.sleep(0.1)
     except KeyboardInterrupt:
         print("Interrupted by user, disconnecting...")

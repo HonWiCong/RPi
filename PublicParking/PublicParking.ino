@@ -42,7 +42,7 @@ void setup() {
     for (int i = 0; i < NUM_PARKING_SLOTS; i++) {
         pinMode(parkingSlots[i].ledPin, OUTPUT);
         pinMode(parkingSlots[i].irPin, INPUT);
-        sendSerialData("Parking", PARKING_EMPTY, 0, i + 1);
+        sendSerialData("Parking", PARKING_EMPTY, i + 1);
     }
 }
 
