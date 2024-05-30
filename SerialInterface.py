@@ -7,7 +7,7 @@ class SerialInterface:
     """Creates a Serial Interface with the specified parameters and allows to read from
     and write to it."""
 
-    def __init__(self, port="COM13", baud=9600):
+    def __init__(self, port="/dev/ttyUSB0", baud=9600):
         self.no_response = False
         self.timeout_timer = time.time()
         self.ser = serial.Serial(port, baudrate=baud, timeout=2)

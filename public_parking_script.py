@@ -134,9 +134,9 @@ myMQTTClient = AWSIoTMQTTClient("rpi_public")
 myMQTTClient.configureEndpoint(
     "a27eliy2xg4c5e-ats.iot.us-east-1.amazonaws.com", 8883)
 myMQTTClient.configureCredentials(
-    r"C:/Users/Syukri/Desktop/Github Repo/RPi-clone/mqtt/AmazonRootCA1.pem",
-    r"C:/Users/Syukri/Desktop/Github Repo/RPi-clone/mqtt/44bdbb017ed61e3180473d7562a7219625694010abfe0315ab96632a7fe8402b-private.pem.key",
-    r"C:/Users/Syukri/Desktop/Github Repo/RPi-clone/mqtt/44bdbb017ed61e3180473d7562a7219625694010abfe0315ab96632a7fe8402b-certificate.pem.crt"
+    r"/home/pi/RPi-clone/mqtt/AmazonRootCA1.pem",
+    r"/home/pi/RPi-clone/mqtt/44bdbb017ed61e3180473d7562a7219625694010abfe0315ab96632a7fe8402b-private.pem.key",
+    r"/home/pi/RPi-clone/mqtt/44bdbb017ed61e3180473d7562a7219625694010abfe0315ab96632a7fe8402b-certificate.pem.crt"
 )
 myMQTTClient.configureOfflinePublishQueueing(-1)
 myMQTTClient.configureDrainingFrequency(2)
