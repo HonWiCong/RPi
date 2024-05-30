@@ -106,14 +106,12 @@ def publish_to_cloud(data):
     except Exception as e:
         print(f"Error publishing to cloud: {e}")
 
-def handle_parking_event(slot_id, status, distance):
+def handle_parking_event(slot_id, status):
     current_status = current_parking_status.get(slot_id, None)
     if status == 0 and current_status == 1:
         end_parking_session(slot_id)
     elif status == 1 and current_status != 1:
         start_parking_session(slot_id)
-    elif status == 2:
-        log_system_alarm(slot_id, "Error at parking slot", "Parking sensor error detected")
     current_parking_status[slot_id] = status
     update_public_carpark_slot(slot_id, status)
 
@@ -146,17 +144,6 @@ def end_parking_session(slot_id):
         publish_to_cloud({"slot_id": slot_id, "status": 0, "end_time": datetime.now().isoformat()})
     except Exception as e:
         print(f"Error ending parking session: {e}")
-
-def log_system_alarm(slot_id, alarm_type, description):
-    try:
-        localDatabase.query(
-            'INSERT INTO system_alarms (type, description, timestamp) VALUES (%s, %s, %s)',
-            params=(alarm_type, description, datetime.now())
-        )
-        # Publish to cloud
-        publish_to_cloud({"slot_id": slot_id, "type": alarm_type, "description": description, "timestamp": datetime.now().isoformat()})
-    except Exception as e:
-        print(f"Error logging system alarm: {e}")
 
 def update_public_carpark_slot(slot_id, status):
     try:
@@ -222,18 +209,17 @@ if __name__ == "__main__":
                     data = json.loads(response)
                     slot_id = data["slotID"]
                     status = data["status"]
-                    distance = data["distance"]
 
-                    handle_parking_event(slot_id, status, distance)
+                    handle_parking_event(slot_id, status)
                     update_public_carpark_slot(slot_id, status)
 
                     publish_to_cloud(data)
 
                     # Example: Send an MQTT message if the status changes
                     if status == 1:
-                        publish_to_cloud({"slot_id": slot_id, "status": "occupied", "distance": distance})
+                        publish_to_cloud({"slot_id": slot_id, "status": "occupied"})
                     elif status == 0:
-                        publish_to_cloud({"slot_id": slot_id, "status": "empty", "distance": distance})
+                        publish_to_cloud({"slot_id": slot_id, "status": "empty"})
 
                 except json.JSONDecodeError:
                     print(f"Received non-JSON response: {response}")

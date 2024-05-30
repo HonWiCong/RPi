@@ -82,7 +82,7 @@ def saveData(topic, payload, dup, qos, retain, **kwargs):
             print("Executed SQL command successfully")
             return
 
-        elif "type" in data and "status" in data and "distance" in data and "slotID" in data:
+        elif "type" in data and "status" in data and "slotID" in data:
             slot_id = data["slotID"]
             status = data["status"]
             current_status = current_parking_status.get(slot_id, None)
@@ -93,9 +93,6 @@ def saveData(topic, payload, dup, qos, retain, **kwargs):
             elif status == 1 and current_status != 1:
                 print(f"Starting parking session for slot_id: {slot_id}")
                 start_parking_session(slot_id)
-            elif status == 2:
-                print(f"Logging system alarm for slot_id: {slot_id}")
-                log_system_alarm(slot_id, "Error at parking slot", "Parking sensor error detected")
 
             current_parking_status[slot_id] = status
             print(f"Updating public carpark slot for slot_id: {slot_id} with status: {status}")
@@ -141,17 +138,6 @@ def end_parking_session(slot_id):
     except Exception as e:
         print(f"Error ending parking session: {e}")
 
-def log_system_alarm(slot_id, alarm_type, description):
-    try:
-        cursor = database.cursor()
-        cursor.execute(
-            'INSERT INTO system_alarms (type, description, timestamp) VALUES (%s, %s, %s)',
-            (alarm_type, description, datetime.now())
-        )
-        database.commit()
-        cursor.close()
-    except Exception as e:
-        print(f"Error logging system alarm: {e}")
 
 def update_public_carpark_slot(slot_id, status):
     try:
