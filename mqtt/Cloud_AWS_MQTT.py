@@ -116,7 +116,7 @@ def start_parking_session(slot_id):
         )
         database.commit()
 
-        update_variables(slot_id, 1)
+        update_variables()
         
         cursor.close()
     except Exception as e:
@@ -135,7 +135,7 @@ def end_parking_session(slot_id):
         )
         database.commit()
 
-        update_variables(slot_id, 0)
+        update_variables()
         
         cursor.close()
     except Exception as e:
@@ -163,38 +163,33 @@ def update_public_carpark_slot(slot_id, status):
         database.commit()
         cursor.close()
 
-        update_variables(slot_id, status)
+        update_variables()
     except Exception as e:
         print(f"Error updating public carpark slot: {e}")
 
-def update_variables(slot_id, status):
+def update_variables():
     try:
         cursor = database.cursor()
-        if status == 1:  # If a car is occupying a slot
-            cursor.execute(
-                'UPDATE variables SET value = value + 1 WHERE name = "public_current_car_number"'
-            )
-        elif status == 0:  # If a car is leaving a slot
-            cursor.execute(
-                'UPDATE variables SET value = value - 1 WHERE name = "public_current_car_number"'
-            )
-
-        # Update public_max_car_number if needed
+        # Update public_current_car_number
         cursor.execute(
-            'SELECT value FROM variables WHERE name = "public_max_car_number"'
+            'SELECT COUNT(*) FROM public_carpark_slot WHERE status = 1'
         )
-        max_car_number = cursor.fetchone()
+        current_car_number = cursor.fetchone()[0]
         cursor.execute(
-            'SELECT value FROM variables WHERE name = "public_current_car_number"'
+            'UPDATE variables SET value = %s WHERE name = "public_current_car_number"',
+            (current_car_number,)
         )
-        current_car_number = cursor.fetchone()
-
-        if current_car_number["value"] > max_car_number["value"]:
-            cursor.execute(
-                'UPDATE variables SET value = %s WHERE name = "public_max_car_number"',
-                (current_car_number["value"],)
-            )
         
+        # Update public_max_car_number
+        cursor.execute(
+            'SELECT COUNT(*) FROM public_carpark_slot'
+        )
+        max_car_number = cursor.fetchone()[0]
+        cursor.execute(
+            'UPDATE variables SET value = %s WHERE name = "public_max_car_number"',
+            (max_car_number,)
+        )
+
         database.commit()
         cursor.close()
     except Exception as e:

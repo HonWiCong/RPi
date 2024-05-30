@@ -176,23 +176,41 @@ def update_public_carpark_slot(slot_id, status):
                 'UPDATE variables SET value = value - 1 WHERE name = "public_current_car_number"'
             )
 
-        # Update public_max_car_number if needed
-        max_car_number = localDatabase.query(
-            'SELECT value FROM variables WHERE name = "public_max_car_number"', fetch_results=True
-        )
-        current_car_number = localDatabase.query(
-            'SELECT value FROM variables WHERE name = "public_current_car_number"', fetch_results=True
-        )
-        if current_car_number['value'] > max_car_number['value']:
-            localDatabase.query(
-                'UPDATE variables SET value = %s WHERE name = "public_max_car_number"',
-                params=(current_car_number['value'],)
-            )
-
+        # Update public_max_car_number and public_current_car_number
+        update_variables()
+        
         # Publish to cloud
         publish_to_cloud({"slot_id": slot_id, "status": status})
     except Exception as e:
         print(f"Error updating public carpark slot: {e}")
+
+def update_variables():
+    try:
+        cursor = localDatabase.connection.cursor()
+        # Update public_current_car_number
+        cursor.execute(
+            'SELECT COUNT(*) FROM public_carpark_slot WHERE status = 1'
+        )
+        current_car_number = cursor.fetchone()[0]
+        cursor.execute(
+            'UPDATE variables SET value = %s WHERE name = "public_current_car_number"',
+            (current_car_number,)
+        )
+        
+        # Update public_max_car_number
+        cursor.execute(
+            'SELECT COUNT(*) FROM public_carpark_slot'
+        )
+        max_car_number = cursor.fetchone()[0]
+        cursor.execute(
+            'UPDATE variables SET value = %s WHERE name = "public_max_car_number"',
+            (max_car_number,)
+        )
+
+        localDatabase.connection.commit()
+        cursor.close()
+    except Exception as e:
+        print(f"Error updating variables: {e}")
 
 if __name__ == "__main__":
     try:
