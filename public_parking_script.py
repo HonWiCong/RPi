@@ -1,9 +1,11 @@
 import time
 import json
 from datetime import datetime
+from awscrt import io, mqtt, auth, http
+from awsiot import mqtt_connection_builder
+
 from SerialInterface import SerialInterface
 from Controller import Controller
-from AWSIoTPythonSDK.MQTTLib import AWSIoTMQTTClient
 from Database import Database
 
 localDatabase = Database.get_instance()
@@ -17,6 +19,92 @@ post_response_data = {
 }
 
 current_parking_status = {}
+
+endpoint = "a27eliy2xg4c5e-ats.iot.us-east-1.amazonaws.com"
+cert_filepath = "/home/pi/RPi-clone/mqtt/44bdbb017ed61e3180473d7562a7219625694010abfe0315ab96632a7fe8402b-certificate.pem.crt"
+pri_key_filepath = "/home/pi/RPi-clone/mqtt/44bdbb017ed61e3180473d7562a7219625694010abfe0315ab96632a7fe8402b-private.pem.key"
+ca_filepath = "/home/pi/RPi-clone/mqtt/AmazonRootCA1.pem"
+client_id = "rpi_public_parking"
+
+event_loop_group = io.EventLoopGroup(1)
+host_resolver = io.DefaultHostResolver(event_loop_group)
+client_bootstrap = io.ClientBootstrap(event_loop_group, host_resolver)
+
+io.init_logging(getattr(io.LogLevel, 'NoLogs'), 'stderr')
+
+mqtt_connection = mqtt_connection_builder.mtls_from_path(
+    endpoint=endpoint,
+    cert_filepath=cert_filepath,
+    pri_key_filepath=pri_key_filepath,
+    client_bootstrap=client_bootstrap,
+    ca_filepath=ca_filepath,
+    client_id=client_id,
+    clean_session=False,
+    keep_alive_secs=6
+)
+
+print("Connecting to {} with client ID '{}'...".format(endpoint, client_id))
+connected_future = mqtt_connection.connect()
+connected_future.result()
+if connected_future.done():
+    print("Connected!")
+else:
+    print("Connection failed")
+
+def retrieveData(topic, payload, dup, qos, retain, **kwargs):
+    print("New message received")
+    global controller, localDatabase, data_received
+    payload = payload.decode('utf-8')
+    data = json.loads(payload)
+    print(data)
+
+    # Update controller variables based on received data
+    for key, value in data.items():
+        setattr(controller, key, value)
+
+    # Update all the variables in the database that match the name
+    for key in data:
+        localDatabase.query(f"UPDATE variables SET value = {data[key]} WHERE name = '{key}'", False)
+    
+    data_received = True
+    print(controller.toJson())
+    iface.write_msg(controller.toJson())
+    # Repeat 5 times if the response is invalid
+    response = iface.read_msg()
+    i = 5
+    while response is None or response.startswith("Error") or response.startswith("InvalidInput") and i > 0:
+        print(f"Response: {response}")
+        iface.write_msg(controller.toJson())
+        response = iface.read_msg()
+        i -= 1
+
+def handleResponseData(topic, payload, dup, qos, retain, **kwargs):
+    print("Response received")
+    global post_response_data
+    payload = payload.decode('utf-8')
+    data = json.loads(payload)
+
+    if "status" in data and "message" in data:
+        post_response_data["status"] = data["status"]
+        post_response_data["message"] = data["message"]
+
+mqtt_connection.publish(topic="rpi/get_public_parking", payload=json.dumps({"request": "control_data"}), qos=mqtt.QoS.AT_LEAST_ONCE)
+subscribe_future, packet_id = mqtt_connection.subscribe(topic="rpi/get_public_parking", qos=mqtt.QoS.AT_LEAST_ONCE, callback=retrieveData)
+subscribe_result = subscribe_future.result()
+if subscribe_future.done():
+    print("Subscribed to rpi/get_public_parking")
+
+subscribe_future, packet_id = mqtt_connection.subscribe(topic="rpi/post_public_parking", qos=mqtt.QoS.AT_LEAST_ONCE, callback=handleResponseData)
+subscribe_result = subscribe_future.result()
+if subscribe_future.done():
+    print("Subscribed to rpi/post_public_parking")
+
+def publish_to_cloud(data):
+    try:
+        publish_future, packet_id = mqtt_connection.publish("rpi/post_public_parking", json.dumps(data), mqtt.QoS.AT_LEAST_ONCE)
+        publish_result = publish_future.result()
+    except Exception as e:
+        print(f"Error publishing to cloud: {e}")
 
 def handle_parking_event(slot_id, status, distance):
     current_status = current_parking_status.get(slot_id, None)
@@ -106,59 +194,12 @@ def update_public_carpark_slot(slot_id, status):
     except Exception as e:
         print(f"Error updating public carpark slot: {e}")
 
-
-def publish_to_cloud(data):
-    myMQTTClient.publish("rpi/get_request", json.dumps(data), 1)
-
-def retrieveData(client, userdata, message):
-    print("New message received")
-    global controller, localDatabase, data_received
-    payload = message.payload.decode('utf-8')
-    data = json.loads(payload)
-    print(data)
-    data_received = True
-    print(controller.toJson())
-    iface.write_msg(controller.toJson())
-
-def handleResponseData(client, userdata, message):
-    print("Response received")
-    global post_response_data
-    payload = message.payload.decode('utf-8')
-    data = json.loads(payload)
-
-    if "status" in data and "message" in data:
-        post_response_data["status"] = data["status"]
-        post_response_data["message"] = data["message"]
-
-myMQTTClient = AWSIoTMQTTClient("rpi_public")
-myMQTTClient.configureEndpoint(
-    "a27eliy2xg4c5e-ats.iot.us-east-1.amazonaws.com", 8883)
-myMQTTClient.configureCredentials(
-    r"/home/pi/RPi-clone/mqtt/AmazonRootCA1.pem",
-    r"/home/pi/RPi-clone/mqtt/44bdbb017ed61e3180473d7562a7219625694010abfe0315ab96632a7fe8402b-private.pem.key",
-    r"/home/pi/RPi-clone/mqtt/44bdbb017ed61e3180473d7562a7219625694010abfe0315ab96632a7fe8402b-certificate.pem.crt"
-)
-myMQTTClient.configureOfflinePublishQueueing(-1)
-myMQTTClient.configureDrainingFrequency(2)
-myMQTTClient.configureConnectDisconnectTimeout(10)
-myMQTTClient.configureMQTTOperationTimeout(5)
-
-request = {
-    "request": "control_data"
-}
-
-myMQTTClient.connect()
-myMQTTClient.publish("rpi/get_request", json.dumps(request), 1)
-myMQTTClient.subscribe("rpi/get_response", 1, retrieveData)
-myMQTTClient.subscribe("rpi/post_response", 1, handleResponseData)
-
 if __name__ == "__main__":
     try:
         while True:
             response = iface.read_msg()
             if response:
                 print(f"Response: {response}")
-                # Process the response (e.g., update the database, send MQTT messages, etc.)
                 try:
                     data = json.loads(response)
                     slot_id = data["slotID"]
@@ -168,16 +209,13 @@ if __name__ == "__main__":
                     handle_parking_event(slot_id, status, distance)
                     update_public_carpark_slot(slot_id, status)
 
-                    myMQTTClient.publish("rpi/post_request", f'{response}', 1)
-                    # Reset post_response_data
-                    post_response_data["status"] = None
-                    post_response_data["message"] = None
+                    publish_to_cloud(data)
 
                     # Example: Send an MQTT message if the status changes
                     if status == 1:
-                        myMQTTClient.publish("parking/occupied", json.dumps(data), 1)
+                        publish_to_cloud({"slot_id": slot_id, "status": "occupied", "distance": distance})
                     elif status == 0:
-                        myMQTTClient.publish("parking/empty", json.dumps(data), 1)
+                        publish_to_cloud({"slot_id": slot_id, "status": "empty", "distance": distance})
 
                 except json.JSONDecodeError:
                     print(f"Received non-JSON response: {response}")
@@ -186,5 +224,5 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         print("Interrupted by user, disconnecting...")
     finally:
-        myMQTTClient.disconnect()
+        mqtt_connection.disconnect()
         iface.close()

@@ -6,19 +6,22 @@ from awscrt import io, mqtt, auth, http
 from awsiot import mqtt_connection_builder
 from AWSIoTPythonSDK.exception.AWSIoTExceptions import publishTimeoutException
 
+# Print statement to indicate the script is starting up
+print("Starting Cloud_AWS_MQTT.py script...")
+
 # MySQL Configuration
 database = mysql.connector.connect(
-    host="database.ckozhfjjzal0.us-east-1.amazonaws.com",
+    host="database.ckozhfjjzal0.us-east-1.rds.amazonaws.com",
     user="admin",
     password="aRHnjDuknZhPZc4",
     database="parking"
 )
 
 endpoint = "a27eliy2xg4c5e-ats.iot.us-east-1.amazonaws.com"
-cert_filepath = r"\home\pi\RPi-clone\mqtt\44bdbb017ed61e3180473d7562a7219625694010abfe0315ab96632a7fe8402b-certificate.pem.crt"
-pri_key_filepath =  r"\home\pi\RPi-clone\mqtt\44bdbb017ed61e3180473d7562a7219625694010abfe0315ab96632a7fe8402b-private.pem.key"
-ca_filepath = r"\home\pi\RPi-clone\mqtt\AmazonRootCA1.pem"
-client_id = "ParkingSlot"
+cert_filepath = "/home/pi/RPi-clone/mqtt/44bdbb017ed61e3180473d7562a7219625694010abfe0315ab96632a7fe8402b-certificate.pem.crt"
+pri_key_filepath = "/home/pi/RPi-clone/mqtt/44bdbb017ed61e3180473d7562a7219625694010abfe0315ab96632a7fe8402b-private.pem.key"
+ca_filepath = "/home/pi/RPi-clone/mqtt/AmazonRootCA1.pem"
+client_id = "Public Parking"
 
 # AWS IoT MQTT Client Setup
 event_loop_group = io.EventLoopGroup(1)
@@ -57,7 +60,7 @@ def sendData(topic, payload, dup, qos, retain, **kwargs):
         print(response_data)
         try:
             mqtt_connection.publish(
-                topic="rpi/get_response", payload=json.dumps(response_data), qos=mqtt.QoS.AT_LEAST_ONCE)
+                topic="rpi/get_public_parking", payload=json.dumps(response_data), qos=mqtt.QoS.AT_LEAST_ONCE)
         except publishTimeoutException:
             print("Publish timed out, retrying...")
             time.sleep(1)
@@ -198,9 +201,9 @@ def update_variables(slot_id, status):
         print(f"Error updating variables: {e}")
 
 # MQTT Subscriptions
-print("Subscribing to topic 'rpi/get_request'...")
+print("Subscribing to topic 'rpi/get_public_parking'...")
 subscribe_future, packet_id = mqtt_connection.subscribe(
-    topic="rpi/get_request",
+    topic="rpi/get_public_parking",
     qos=mqtt.QoS.AT_LEAST_ONCE,
     callback=sendData
 )
@@ -209,9 +212,9 @@ subscribe_future, packet_id = mqtt_connection.subscribe(
 subscribe_result = subscribe_future.result()
 print("Subscribed with {}".format(str(subscribe_result['qos'])))
 
-print("Subscribing to topic 'rpi/post_request'...")
+print("Subscribing to topic 'rpi/post_public_parking'...")
 subscribe_future, packet_id = mqtt_connection.subscribe(
-    topic="rpi/post_request",
+    topic="rpi/post_public_parking",
     qos=mqtt.QoS.AT_LEAST_ONCE,
     callback=saveData
 )
